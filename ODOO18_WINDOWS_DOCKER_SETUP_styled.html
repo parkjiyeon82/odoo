@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Odoo 18 Windows Docker Setup Guide</title>
+  <link rel="stylesheet" href="odoo_guide.css" />
+</head>
+<body>
+  <div class="container">
+    <h1 id="windows-git-clone-docker-odoo-18">Windows 로컬 + Git 소스 clone + Docker로 Odoo 18 개발환경 구축 가이드</h1>
+<p>이 문서는 Windows 환경에서 Odoo 18을 Git 소스로 관리하면서 Docker 기반으로 개발 환경을 안정적으로 구성하는 방법을 정리한 가이드입니다.</p>
+<h2 id="1-1">1) 사전 설치 (최초 1회)</h2>
+<p>관리자 권한 PowerShell에서 아래를 실행합니다.</p>
+<pre><code class="language-powershell">winget install --id Git.Git -e
+winget install --id Docker.DockerDesktop -e
+</code></pre>
+<p>설치 후 Docker Desktop을 실행하고, 아래로 설치 확인:</p>
+<pre><code class="language-powershell">git --version
+docker --version
+docker compose version
+</code></pre>
+<hr />
+<h2 id="2-odoo-clone">2) 작업 폴더 생성 + Odoo 소스 clone</h2>
+<pre><code class="language-powershell">New-Item -ItemType Directory -Force C:\workspace\odoo-local | Out-Null
+Set-Location C:\workspace\odoo-local
+
+git clone --depth 1 --branch 18.0 https://github.com/odoo/odoo.git
+New-Item -ItemType Directory -Force .\config,.\custom-addons | Out-Null
+</code></pre>
+<hr />
+<h2 id="3-dockerfile">3) Dockerfile 생성</h2>
+<p>파일 경로: <code>C:\workspace\odoo-local\Dockerfile</code></p>
+<pre><code class="language-powershell">@'
+FROM python:3.11-slim
+
+RUN apt-get update &amp;&amp; apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    libldap2-dev \
+    libsasl2-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    libffi-dev \
+    libssl-dev \
+    postgresql-client \
+    wkhtmltopdf \
+    &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+COPY odoo/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -U pip setuptools wheel &amp;&amp; \
+    pip install --no-cache-dir -r /tmp/requirements.txt
+
+WORKDIR /opt/odoo
+'@ | Set-Content -Path .\Dockerfile -Encoding ASCII
+</code></pre>
+<hr />
+<h2 id="4-docker-composeyml">4) docker-compose.yml 생성</h2>
+<p>파일 경로: <code>C:\workspace\odoo-local\docker-compose.yml</code></p>
+<pre><code class="language-powershell">@'
+services:
+  db:
+    image: postgres:16
+    container_name: odoo18-db
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+      POSTGRES_DB: postgres
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [&quot;CMD-SHELL&quot;, &quot;pg_isready -U odoo -d postgres&quot;]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  odoo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: odoo18-web
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - &quot;8069:8069&quot;
+    volumes:
+      - ./odoo:/opt/odoo
+      - ./config/odoo.conf:/etc/odoo/odoo.conf
+      - ./custom-addons:/mnt/extra-addons
+      - odoo-web-data:/var/lib/odoo
+    command: python /opt/odoo/odoo-bin -c /etc/odoo/odoo.conf
+
+volumes:
+  odoo-db-data:
+  odoo-web-data:
+'@ | Set-Content -Path .\docker-compose.yml -Encoding ASCII
+</code></pre>
+<hr />
+<h2 id="5-odooconf">5) odoo.conf 생성</h2>
+<p>파일 경로: <code>C:\workspace\odoo-local\config\odoo.conf</code></p>
+<pre><code class="language-powershell">@'
+[options]
+admin_passwd = admin
+db_host = db
+db_port = 5432
+db_user = odoo
+db_password = odoo
+addons_path = /opt/odoo/addons,/mnt/extra-addons
+data_dir = /var/lib/odoo
+http_port = 8069
+'@ | Set-Content -Path .\config\odoo.conf -Encoding ASCII
+</code></pre>
+<hr />
+<h2 id="6">6) 실행</h2>
+<pre><code class="language-powershell">Set-Location C:\workspace\odoo-local
+docker compose up -d --build
+docker compose ps
+docker compose logs -f odoo
+</code></pre>
+<p>브라우저 접속:</p>
+<ul>
+<li><code>http://localhost:8069</code></li>
+</ul>
+<p>초기 DB 생성 예시:</p>
+<ul>
+<li>Master Password: <code>admin</code></li>
+<li>Database Name: <code>odoo18_dev</code></li>
+<li>Email / Password: 원하는 계정 정보 입력</li>
+</ul>
+<hr />
+<h2 id="7">7) 개발 시 자주 쓰는 명령</h2>
+<pre><code class="language-powershell"># 중지
+docker compose down
+
+# 재시작
+docker compose up -d
+
+# 로그 확인
+docker compose logs -f odoo
+
+# 특정 모듈 업데이트 (예: my_module)
+docker compose exec odoo python /opt/odoo/odoo-bin -c /etc/odoo/odoo.conf -d odoo18_dev -u my_module --stop-after-init
+
+# DB/볼륨까지 완전 초기화
+docker compose down -v
+</code></pre>
+<hr />
+<h2 id="8-git">8) Git 커스텀 모듈 연동 개발 루틴</h2>
+<p><code>custom-addons</code>에 외부 모듈 저장소를 clone하고 Odoo에서 바로 읽도록 구성합니다.</p>
+<pre><code class="language-powershell">cd C:\workspace\odoo-local\custom-addons
+git clone https://github.com/&lt;org&gt;/&lt;repo1&gt;.git
+git clone https://github.com/&lt;org&gt;/&lt;repo2&gt;.git
+</code></pre>
+<p><code>odoo.conf</code>의 <code>addons_path</code>는 아래처럼 유지:</p>
+<pre><code class="language-ini">addons_path = /opt/odoo/addons,/mnt/extra-addons
+</code></pre>
+<p><code>docker-compose.yml</code> 볼륨 마운트 확인:</p>
+<pre><code class="language-yaml">volumes:
+  - ./custom-addons:/mnt/extra-addons
+</code></pre>
+<p>코드 수정 후 반영 루틴:</p>
+<pre><code class="language-powershell">docker compose exec odoo python /opt/odoo/odoo-bin -c /etc/odoo/odoo.conf -d odoo18_dev -u &lt;module_name&gt; --stop-after-init
+docker compose restart odoo
+</code></pre>
+<hr />
+<h2 id="9">9) 문제 해결 체크리스트</h2>
+<ul>
+<li><code>docker compose up</code> 실패:</li>
+<li>Docker Desktop이 실행 중인지 확인</li>
+<li>포트 <code>8069</code> 점유 여부 확인</li>
+<li>모듈이 앱 목록에 안 보임:</li>
+<li>모듈 폴더에 <code>__manifest__.py</code> 존재 확인</li>
+<li>Apps에서 <code>Update Apps List</code> 또는 모듈 업데이트 명령 실행</li>
+<li>권한/의존성 오류:</li>
+<li>컨테이너 로그 확인: <code>docker compose logs -f odoo</code></li>
+</ul>
+<hr />
+<p>이 구성을 사용하면 Odoo 소스는 Git으로 버전 관리하고, 실행 환경은 Docker로 고정하여 로컬 개발 재현성을 높일 수 있습니다.</p>
+    <div class="footer">Generated from ODOO18_WINDOWS_DOCKER_SETUP.md</div>
+  </div>
+</body>
+</html>

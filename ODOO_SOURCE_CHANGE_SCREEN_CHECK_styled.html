@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Odoo 소스 변경 후 화면 확인 가이드</title>
+  <link rel="stylesheet" href="odoo_screen_check.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <h1>소스를 변경하고 화면에서 확인하려면 어떻게 해야해?</h1>
+      <p class="subtitle">Docker 기반 Odoo 개발 환경에서 변경 내용을 빠르게 확인하는 실전 루틴</p>
+    </header>
+
+    <section>
+      <h2>1. 기본 원칙</h2>
+      <ul>
+        <li>코드를 저장해도 모든 변경이 자동 반영되지는 않습니다.</li>
+        <li>파일 종류에 따라 <strong>새로고침 / 서버 재시작 / 모듈 업데이트(-u)</strong>가 필요합니다.</li>
+      </ul>
+      <div class="note">
+        핵심: <code>Python</code> 변경은 재시작, <code>XML/보안/데이터</code> 변경은 모듈 업데이트가 안전합니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 가장 많이 쓰는 확인 루틴 (PowerShell)</h2>
+      <pre><code>cd C:\workspace\odoo-docker
+docker compose up -d
+docker compose logs -f odoo</code></pre>
+      <ol>
+        <li>Cursor에서 코드 수정</li>
+        <li>아래 변경 유형에 맞는 명령 실행</li>
+        <li>브라우저에서 <code>http://localhost:8069</code> 새로고침</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>3. 변경 유형별 반영 방법</h2>
+
+      <h3>A) Python 코드 변경 (<code>models/*.py</code>, <code>controllers/*.py</code>)</h3>
+      <p>서버 재시작이 필요합니다.</p>
+      <pre><code>docker compose restart odoo</code></pre>
+
+      <h3>B) XML/View/Security/Data/Manifest 변경</h3>
+      <p>모듈 업데이트 후 재시작 권장:</p>
+      <pre><code>docker compose exec odoo odoo -c /etc/odoo/odoo.conf -d odoo18_dev -u &lt;module_name&gt; --stop-after-init
+docker compose restart odoo</code></pre>
+
+      <h3>C) JS/CSS/SCSS 변경</h3>
+      <ul>
+        <li>URL에 <code>?debug=assets</code>를 붙여 접속</li>
+        <li><code>Ctrl + F5</code> 강력 새로고침</li>
+        <li>필요하면 B 방식(모듈 업데이트)도 함께 실행</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. 모듈명은 무엇을 넣어야 하나요?</h2>
+      <p><code>-u &lt;module_name&gt;</code>의 모듈명은 보통 <strong>폴더명(기술명)</strong>입니다.</p>
+      <pre><code># 예시 폴더
+C:\workspace\odoo-docker\custom-addons\my_partner_ext\__manifest__.py
+
+# 사용해야 할 모듈명
+my_partner_ext</code></pre>
+    </section>
+
+    <section>
+      <h2>5. 안 바뀔 때 점검 체크리스트</h2>
+      <ul>
+        <li>로그 확인: <code>docker compose logs -f odoo</code></li>
+        <li>DB 이름 확인: <code>-d odoo18_dev</code>가 실제 DB와 일치하는지</li>
+        <li>모듈명 확인: 폴더명/manifest 존재 여부</li>
+        <li>브라우저 캐시 제거: <code>Ctrl + F5</code></li>
+      </ul>
+    </section>
+
+    <section class="quick">
+      <h2>6. 빠른 명령 요약</h2>
+      <pre><code># 서버 재시작
+docker compose restart odoo
+
+# 모듈 업데이트 + 재시작
+docker compose exec odoo odoo -c /etc/odoo/odoo.conf -d odoo18_dev -u &lt;module_name&gt; --stop-after-init
+docker compose restart odoo</code></pre>
+    </section>
+
+    <footer>
+      Generated for: "소스를 변경하고 화면에서 확인을 하려면 어떻게 해야해??"
+    </footer>
+  </div>
+</body>
+</html>
